@@ -13,7 +13,7 @@ literal string, so a pasted path "just works" with no backslash doubling and no 
 Format
 ------
 ``# ...``                  a comment line (ignored)
-``active = <name>``        (top, before any block) the preset to use this session
+``active = <name>``        (top, before any block) the shared default preset (see below)
 ``[<name>] {`` ... ``}``   a preset block: the name, then ``{``, its ``key = value`` lines, and ``}``
 ``key = value``            a setting inside the current block; the value is literal to end-of-line
 
@@ -28,6 +28,11 @@ blocks below it are never touched.
 
 Every key is optional and the file is optional: a missing/blank/corrupt file simply yields the
 built-in :data:`DEFAULT_PRESET`, so the app always runs.
+
+The preset picked on the Setup tab is a per-machine choice, so it is **not** written back into
+``presets.txt`` (which is tracked in git and would churn on every switch). It is stored in the
+gitignored ``local_state.json`` sidecar instead and overrides the file's ``active`` line, which
+only supplies the default for a fresh checkout.
 
 The Results tab's figure-export style is a separate concern (not part of a preset) and is persisted
 to its own ``export_spec.json`` sidecar via :func:`load_export_spec` / :func:`save_export_spec`.
@@ -44,6 +49,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "presets.txt"
 EXPORT_SPEC_PATH = ROOT / "export_spec.json"
+# Per-machine UI state (currently just the chosen preset); gitignored, unlike presets.txt.
+LOCAL_STATE_PATH = ROOT / "local_state.json"
 
 # Per-augmentation-method parameter ranges: {method_key: {param_name: (lo, hi)}}.
 Ranges = dict[str, dict[str, tuple[float, float]]]
@@ -369,7 +376,8 @@ _TEMPLATE_BODY = """\
 #
 # A preset is a NAMED BLOCK:   [name] {  ...settings...  }
 # It pre-fills the Setup -> Clipping -> Augmentation -> Feature tabs.
-# Pick the active one on the Setup tab (or set `active` below).
+# Pick the active one on the Setup tab; `active` below is only the
+# default (your choice is remembered per machine in local_state.json).
 #
 # Paths are LITERAL: paste a raw Windows path with single backslashes,
 # e.g.  cloud_dir = C:\\Data\\clouds   (no doubling needed).
@@ -487,16 +495,30 @@ def load_presets() -> tuple[dict[str, Preset], str]:
             CONFIG_PATH.write_text(refreshed, encoding="utf-8")
         except OSError:
             pass
-    return parse_config(refreshed)
+    presets, active = parse_config(refreshed)
+    # The machine-local choice wins over the file's shared default, as long as it still exists.
+    local = _load_local_state().get("active_preset")
+    if isinstance(local, str) and local in presets:
+        active = local
+    return presets, active
+
+
+def _load_local_state() -> dict:
+    """Read the per-machine ``local_state.json`` ({} if missing/unreadable)."""
+    try:
+        data = json.loads(LOCAL_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def set_active_preset(name: str) -> None:
-    """Persist the chosen active-preset ``name`` back into ``presets.txt`` (best-effort).
+    """Persist the chosen active-preset ``name`` to ``local_state.json`` (best-effort).
 
-    Rewrites only the ``active = ...`` line (adding one if absent); the preset blocks are left
-    untouched. Updates the in-memory :data:`ACTIVE_NAME` and copies the chosen preset's fields into
-    the existing :data:`CONFIG` object *in place* (so every page that imported ``CONFIG`` by name
-    sees the new values without re-importing).
+    ``presets.txt`` is left untouched, so switching presets never dirties the tracked file. Updates
+    the in-memory :data:`ACTIVE_NAME` and copies the chosen preset's fields into the existing
+    :data:`CONFIG` object *in place* (so every page that imported ``CONFIG`` by name sees the new
+    values without re-importing).
     """
     global ACTIVE_NAME
     if name in PRESETS:
@@ -506,17 +528,10 @@ def set_active_preset(name: str) -> None:
             # first switch would overwrite the preset it came from and later switches back would
             # find their own values already gone.
             setattr(CONFIG, f.name, copy.deepcopy(getattr(PRESETS[name], f.name)))
+    state = _load_local_state()
+    state["active_preset"] = name
     try:
-        text = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else _template_text()
-        lines = text.splitlines()
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith("active") and "=" in stripped and not stripped.startswith("#"):
-                lines[i] = f"active = {name}"
-                break
-        else:
-            lines.insert(0, f"active = {name}")
-        CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        LOCAL_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except OSError:
         pass
 

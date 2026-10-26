@@ -98,6 +98,7 @@ def test_load_presets_writes_template_with_reference_block(tmp_path, monkeypatch
     path = tmp_path / "presets.txt"
     monkeypatch.setattr("common.config.CONFIG_PATH", path)
     monkeypatch.setattr("common.config.EXPORT_SPEC_PATH", tmp_path / "export_spec.json")
+    monkeypatch.setattr("common.config.LOCAL_STATE_PATH", tmp_path / "local_state.json")
 
     presets, active = load_presets()
     assert active == DEFAULT_PRESET_NAME
@@ -121,6 +122,7 @@ def test_load_presets_refreshes_reference_block_in_place(tmp_path, monkeypatch):
     path = tmp_path / "presets.txt"
     monkeypatch.setattr("common.config.CONFIG_PATH", path)
     monkeypatch.setattr("common.config.EXPORT_SPEC_PATH", tmp_path / "es.json")
+    monkeypatch.setattr("common.config.LOCAL_STATE_PATH", tmp_path / "local_state.json")
     # A user file with a stale reference block but a real preset block below it.
     path.write_text(
         "# >>> BEGIN AUTO-GENERATED REFERENCE (edited automatically — do not hand-edit) >>>\n"
@@ -145,6 +147,7 @@ def test_load_presets_tolerates_raw_windows_backslash_paths(tmp_path, monkeypatc
     path = tmp_path / "presets.txt"
     monkeypatch.setattr("common.config.CONFIG_PATH", path)
     monkeypatch.setattr("common.config.EXPORT_SPEC_PATH", tmp_path / "es.json")
+    monkeypatch.setattr("common.config.LOCAL_STATE_PATH", tmp_path / "local_state.json")
     # Single backslashes, including a folder starting with a JSON-escape letter (\final) that broke
     # the old JSON config — here they are read literally with no doubling or corruption.
     path.write_text(
@@ -211,3 +214,26 @@ def test_shipped_presets_choose_their_features():
     for name in ("SGCBP 2019-08-28", "SGCBP 2019-10-02"):
         on = set(presets[name].enabled_features(universe))
         assert on == set(universe) - rgb
+
+
+def test_active_preset_is_stored_locally_not_in_presets_txt(tmp_path, monkeypatch):
+    """Switching presets must not rewrite the tracked presets.txt; the choice lives in local_state."""
+    import common.config as config
+
+    path = tmp_path / "presets.txt"
+    local = tmp_path / "local_state.json"
+    monkeypatch.setattr(config, "CONFIG_PATH", path)
+    monkeypatch.setattr(config, "LOCAL_STATE_PATH", local)
+    path.write_text(config._template_text() + "\n[other] {\n}\n", encoding="utf-8")
+    presets, active = config.load_presets()
+    assert active == DEFAULT_PRESET_NAME
+    before = path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(config, "PRESETS", presets)
+    monkeypatch.setattr(config, "CONFIG", config.Preset())
+    config.set_active_preset("other")
+
+    assert path.read_text(encoding="utf-8") == before          # tracked file untouched
+    assert config.load_presets()[1] == "other"                 # local choice wins on reload
+    local.write_text('{"active_preset": "gone"}', encoding="utf-8")
+    assert config.load_presets()[1] == DEFAULT_PRESET_NAME     # stale choice falls back to file

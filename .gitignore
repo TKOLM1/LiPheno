@@ -24,6 +24,7 @@ desktop.ini
 
 # ---- Runtime-generated UI state ----
 imgui.ini
+local_state.json
 .polyscope.ini
 
 # ---- Project folders live outside the repo; these only appear if the app is
@@ -45,3 +46,4 @@ Data/CYENS/
 
 # ---- Local working notes (not published) ----
 plans/
+files for documentation/

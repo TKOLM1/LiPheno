@@ -84,6 +84,7 @@ class ResultsPage(QWidget):
         self._source = None                               # data source the loaded model predicts on
         self._table = None                                # cached per-plot prediction table (instant toggle refresh)
         self._features_frame = None                       # frame handed to the map view
+        self._frame_target: str | None = None             # target column joined into that frame
         self._file_map: dict[tuple[int, int], Path] = {}  # (plot, aug) -> representative file
         self._viewer = ViewerProcess()                    # the one shared polyscope window
 
@@ -439,6 +440,7 @@ class ResultsPage(QWidget):
         # from the bundle with no source build and no re-prediction.
         self._source = None
         self._features_frame = None
+        self._frame_target = None
         self._build_file_map()  # disk scan for (plot, aug) -> file; independent of the source
         self._populate_splits()
         self._sync_nested_cv_tab(loaded)
@@ -543,27 +545,49 @@ class ResultsPage(QWidget):
         source = self._build_source(self._loaded)
         self._source = source
         self._features_frame = source.frame
+        self._frame_target = source.target_column
 
     def _load_features_frame_quiet(self) -> bool:
-        """Read the project's features workbook into ``self._features_frame`` if it's reachable.
+        """Read the project's features (+ targets) workbooks into ``self._features_frame``.
 
         Model-independent and silent: the features workbook is produced by the **Features** stage, so
         it can (and should) be available for the map's colour-by / distribution / display fields even
-        before any model is trained. Idempotent; returns whether a frame is now in memory. Failures
-        (no path, missing/unreadable file) are swallowed — the map degrades to plot number only.
+        before any model is trained. The Features stage writes the ground-truth target to a separate
+        targets workbook (keeping y out of X), so it is joined back in here when reachable — otherwise
+        the target could never be picked on the map. Idempotent; returns whether a frame is now in
+        memory. Failures (no path, missing/unreadable file) are swallowed — a broken targets workbook
+        falls back to the features alone, a missing features workbook to plot number only.
         """
         if self._features_frame is not None:
             return True
         features = self._session.feature_table_path
         if not (features and Path(features).exists()):
             return False
+        targets = self._session.targets_table_path
+        if targets and Path(targets).exists():
+            try:
+                dataset = load_dataset(features, targets)
+                self._features_frame = dataset.frame
+                self._frame_target = dataset.target_column
+                return True
+            except Exception:  # noqa: BLE001
+                pass
         from ml.dataset import _read_indexed
 
         try:
             self._features_frame = _read_indexed(features)
         except Exception:  # noqa: BLE001
             return False
+        self._frame_target = None
         return True
+
+    def _map_target_column(self) -> str | None:
+        """The target column to single out on the map: the one actually joined into the frame.
+
+        The session's target is the Features-page dropdown, which is unset after merely re-opening a
+        project and may differ from the targets workbook on disk, so the frame's own target wins.
+        """
+        return self._frame_target or self._session.target_column
 
     def _ensure_features_frame(self, *, quiet: bool = False) -> bool:
         """Load the features workbook for the classical map overlay (idempotent). Returns success.
@@ -598,7 +622,7 @@ class ResultsPage(QWidget):
             return
         if self._load_features_frame_quiet():
             self.map_view.refresh(self._table, self._features_frame, self._file_map,
-                                  self._session.project, target_column=self._session.target_column)
+                                  self._session.project, target_column=self._map_target_column())
 
     def _add_tab(self, page: QWidget, label: str) -> int:
         """Add a sub-tab, wrapped so it scrolls instead of forcing the window taller than the screen.
@@ -733,7 +757,7 @@ class ResultsPage(QWidget):
         selection = self._current_selection()
         history = self._loaded.history if self._loaded else None
         self.map_view.refresh(table, self._features_frame, self._file_map, self._session.project,
-                               target_column=self._session.target_column)
+                               target_column=self._map_target_column())
         # The feature overlay needs the features workbook; pull it in automatically when the map tab
         # is already the visible one (a tab switch wouldn't fire), silently doing nothing for an
         # unreachable workbook.
@@ -764,6 +788,7 @@ class ResultsPage(QWidget):
         self.split_combo.clear()
         self.split_combo.blockSignals(False)
         self._features_frame = None
+        self._frame_target = None
         selection = VariantSelection.legacy()
         # No model yet, but the map stays usable for inspection: feed it the project's clouds (built
         # from disk) with no predictions so the field map draws the plot footprints and the user can
@@ -774,7 +799,7 @@ class ResultsPage(QWidget):
         self._build_file_map()
         self._load_features_frame_quiet()
         self.map_view.refresh(None, self._features_frame, self._file_map, self._session.project,
-                              target_column=self._session.target_column)
+                              target_column=self._map_target_column())
         self.model_performance.refresh(None, None, selection)
         self.split_consistency.refresh(None, selection)
         self.nested_cv_stability.set_meta(None)

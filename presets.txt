@@ -61,7 +61,8 @@
 #
 # A preset is a NAMED BLOCK:   [name] {  ...settings...  }
 # It pre-fills the Setup -> Clipping -> Augmentation -> Feature tabs.
-# Pick the active one on the Setup tab (or set `active` below).
+# Pick the active one on the Setup tab; `active` below is only the
+# default (your choice is remembered per machine in local_state.json).
 #
 # Paths are LITERAL: paste a raw Windows path with single backslashes,
 # e.g.  cloud_dir = C:\Data\clouds   (no doubling needed).

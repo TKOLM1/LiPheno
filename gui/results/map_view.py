@@ -107,7 +107,8 @@ _VIEW_GRID = "Grid"
 
 
 class GroupedFieldButton(QToolButton):
-    """A field picker that folds out into groups (Plot number / Target / Features ▶ / Others ▶).
+    """A field picker that folds out into groups (Plot number / Features ▶ / Target Features ▶ /
+    Others ▶).
 
     Replaces a flat combo whose long list mixed the plot number, the target feature, the ordinary
     features and the per-point colour modes. The button shows the current choice; clicking pops a
@@ -752,8 +753,8 @@ class MapView(QWidget):
         Fields are grouped so the picker distinguishes the plot number, the target feature, the
         ordinary features and (colour only) the extra colour modes:
 
-        * **display lines** list ``Plot number``, ``Model error (%)``, the target and a **Features**
-          submenu (line 0 defaults to the plot number);
+        * **display lines** list ``Plot number``, ``Model error (%)`` and the **Features** and
+          **Target Features** submenus (line 0 defaults to the plot number);
         * the **2D colour** picker drops the plot number (its grading is meaningless) and offers a
           custom single colour under **Others**;
         * the **3D colour** picker adds the per-point modes ``Original RGB`` / ``Relative height`` to
@@ -768,10 +769,11 @@ class MapView(QWidget):
         error_singleton = [_ERROR_FIELD] if has_predictions else []
         self._fields = [_PLOT_FIELD, *error_singleton, *feature_cols]
 
-        # Display lines keep the plot number; the colour pickers drop it.
-        disp_singletons = [_PLOT_FIELD, *error_singleton] + ([target] if target else [])
-        colour_singletons = [*error_singleton] + ([target] if target else [])
-        groups = [("Features ▸", plain_features)]
+        # Display lines keep the plot number; the colour pickers drop it. The target gets its own
+        # fold-out after the features (an empty group is skipped, so it vanishes with no target).
+        disp_singletons = [_PLOT_FIELD, *error_singleton]
+        colour_singletons = [*error_singleton]
+        groups = [("Features ▸", plain_features), ("Target Features ▸", [target] if target else [])]
 
         # Display lines: line 0 defaults to the plot number, the rest to (none).
         for i, row in enumerate(self._lines):
@@ -804,8 +806,9 @@ class MapView(QWidget):
         plain_features = [c for c in feature_cols if c != target]
         # Model error needs a model; drop it from the distribution picker in inspection-only mode.
         has_predictions = self._predictions is not None and len(self._predictions) > 0
-        singletons = ([_ERROR_FIELD] if has_predictions else []) + ([target] if target else [])
-        return singletons, [("Features ▸", plain_features)]
+        singletons = [_ERROR_FIELD] if has_predictions else []
+        return singletons, [("Features ▸", plain_features),
+                            ("Target Features ▸", [target] if target else [])]
 
     # ------------------------------------------------------------------ #
     # Per-map value lookups                                              #

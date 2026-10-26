@@ -511,6 +511,25 @@ def _register_horizontal_geometry(_add, vx, vy, h) -> None:
                  colour, _reg_slope)
 
 
+# Feature items drawn translucent (set_transparency < 1) - the only ones that need depth peeling.
+_TRANSLUCENT_PREFIXES = ("plane:", "sigma_z", "slope_")
+
+
+def _sync_transparency_mode() -> None:
+    """Depth-peel ("pretty") only while a translucent item is shown, else render opaque ("none").
+
+    Registering a translucent mesh makes polyscope switch to "pretty" even while that mesh is
+    disabled, and "pretty" costs ~8x a plain frame regardless of what is visible - so it must be
+    switched back off whenever no translucent item is ticked. ("simple" is not an alternative: it
+    alpha-blends every structure, washing out the point cloud.)
+    """
+    import polyscope as ps
+
+    any_shown = any(item["show"][0] for key, item in _FEATURE_ITEMS.items()
+                    if key.startswith(_TRANSLUCENT_PREFIXES))
+    ps.set_transparency_mode("pretty" if any_shown else "none")
+
+
 def _set_enabled(name: str, show: bool) -> None:
     """Enable/disable a registered structure by name, whatever its type."""
     import polyscope as ps
@@ -576,6 +595,7 @@ def _viewer_ui_callback() -> None:
             item["show"][0] = show
             for name in item["names"]:
                 _set_enabled(name, show)
+            _sync_transparency_mode()
 
     if not _FEATURE_LEGEND_ACTIVE[0]:
         return
@@ -632,6 +652,7 @@ def _apply_payload(payload: dict) -> None:
     for spec in feature_specs:
         _register_feature_geometry(spec, origin)
     _FEATURE_LEGEND_ACTIVE[0] = bool(feature_specs)
+    _sync_transparency_mode()  # undo the auto-"pretty" from registering the (disabled) planes
 
     # The UI callback is always installed: it hosts the toggles (and the legend when geometry is
     # present).
@@ -670,6 +691,10 @@ def main(argv: list[str]) -> int:
     ps.set_up_dir("z_up")
     ps.set_background_color((0.0, 0.0, 0.0))
     ps.set_ground_plane_mode("none")
+    # Depth peeling re-renders the whole scene (every cloud point) once per pass; 3 instead of the
+    # default 8 is ~3x cheaper and looks the same for a handful of stacked planes. Whether peeling
+    # runs at all is decided per toggle by _sync_transparency_mode.
+    ps.set_transparency_render_passes(3)
 
     last_seq = -1
     last_mtime = -1.0
