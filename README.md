@@ -1,6 +1,6 @@
 # LiPheno: Wheat Biomass Toolkit
 
-A desktop app for exploring how well crop biomass can be predicted from LiDAR
+A desktop app for exploring how well crop biomass, or other target values, can be predicted from LiDAR
 point clouds of field plots. You load the scans, compute vegetation features
 for each plot, train and compare several machine learning models, and see the
 results on a map of the field. From the map you can click any plot to open its
