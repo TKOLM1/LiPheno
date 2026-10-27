@@ -42,7 +42,9 @@ local_state.json
 .env
 
 # ---- Data ----
-Data/CYENS/ 
+Data/CYENS/07-03-2025
+Data/CYENS/20-03-2025
+Data/CYENS/03_04_2025/03-04-2025_pre_processed.las
 
 # ---- Local working notes (not published) ----
 plans/

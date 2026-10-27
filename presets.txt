@@ -183,7 +183,7 @@ active = SGCBP 2019-10-02
     import_clipped_dir =
     reference_dir      = Data/CYENS
 
-    cloud_file     = Data/CYENS/03_04_2025/03-04-2025_pre_processed.las
+    cloud_file     = Data/CYENS/03_04_2025/03-04-2025_pre_processed.copc.laz
     mask_file      = Data/CYENS/final mask remapped.gpkg
     import_folder  =
     reference_file = Data/CYENS/Cyens data Sept2025.xlsx
@@ -194,7 +194,7 @@ active = SGCBP 2019-10-02
     label_field = plot
     use_row     = false
 
-    # Blank = detect. The .las declares UTM zone 36N, whose axis unit is the
+    # Blank = detect. The cloud declares UTM zone 36N, whose axis unit is the
     # metre, so detection reads it straight off the file's own CRS. The clip
     # route keeps real coordinates, so there is nothing to lay out either.
     source_units =

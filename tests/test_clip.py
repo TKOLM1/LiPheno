@@ -75,6 +75,28 @@ def test_write_cloud_strips_copc_header(tmp_path):
     assert "RelativeHeight" in set(back.point_format.dimension_names)  # dims preserved
 
 
+def test_write_cloud_strips_copc_keeps_other_evlrs(tmp_path):
+    """Real COPC files also carry non-COPC EVLRs (e.g. QGIS's); those survive the rewrite."""
+    las = laspy.LasData(laspy.LasHeader(point_format=7, version="1.4"))  # EVLRs need LAS 1.4
+    las.x = np.array([1.0, 2.0])
+    las.y = np.array([1.0, 2.0])
+    las.z = np.zeros(2)
+    las.header.vlrs.append(
+        laspy.VLR(user_id="copc", record_id=1, description="copc info", record_data=b"\x00" * 160)
+    )
+    las.header.evlrs = [
+        laspy.VLR(user_id="copc", record_id=1000, description="hierarchy", record_data=b"\x00" * 32),
+        laspy.VLR(user_id="qgis", record_id=0, description="qgis", record_data=b"keep me"),
+    ]
+
+    out = tmp_path / "clean.laz"
+    las_io.write_cloud(las, out)  # used to fail: "'list' object has no attribute 'write_to'"
+
+    back = las_io.read_cloud(out)
+    assert not las_io.is_copc(back)
+    assert [(v.user_id, v.record_id) for v in back.header.evlrs] == [("qgis", 0)]
+
+
 def test_clip_excludes_boundary_and_outside(tmp_path):
     # (0, 5) is exactly on the left edge -> strict contains excludes it.
     cloud = tmp_path / "field.laz"

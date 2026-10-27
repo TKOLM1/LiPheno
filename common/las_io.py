@@ -22,6 +22,7 @@ from pathlib import Path
 
 import laspy
 import numpy as np
+from laspy.vlrs.vlrlist import VLRList
 
 
 def read_cloud(path: str | Path) -> laspy.LasData:
@@ -78,7 +79,8 @@ def _decopc(las: laspy.LasData) -> laspy.LasData:
     header.vlrs.extend(v for v in (src.vlrs or []) if str(getattr(v, "user_id", "")).lower() != "copc")
     evlrs = [v for v in (src.evlrs or []) if str(getattr(v, "user_id", "")).lower() != "copc"]
     if evlrs:
-        header.evlrs = evlrs
+        # Must be a VLRList, not a plain list: laspy calls ``.write_to`` on it when writing.
+        header.evlrs = VLRList(evlrs)
     out = laspy.LasData(header)
     out.points = las.points.copy()
     return out
